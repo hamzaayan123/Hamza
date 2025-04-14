@@ -1,0 +1,121 @@
+import React, { useState, useEffect, useRef } from 'react'; import { Button } from '@/components/ui/button'; import { Input } from '@/components/ui/input'; import { Card, CardContent } from '@/components/ui/card'; import { Mic, Send, UploadCloud } from 'lucide-react';
+
+const Bi = () => { const [message, setMessage] = useState(''); const [chat, setChat] = useState([]); const [file, setFile] = useState(null); const recognitionRef = useRef(null);
+
+useEffect(() => { if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) { const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition; const recognition = new SpeechRecognition(); recognition.continuous = true; recognition.interimResults = false; recognition.lang = 'en-US';
+
+recognition.onresult = (event) => {
+    const transcript = event.results[event.results.length - 1][0].transcript.trim();
+    if (transcript.toLowerCase().startsWith('hey bi')) {
+      const cleanCommand = transcript.slice(6).trim();
+      if (cleanCommand) {
+        handleSend(cleanCommand);
+      }
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event);
+  };
+
+  recognition.onend = () => {
+    recognition.start();
+  };
+
+  recognition.start();
+  recognitionRef.current = recognition;
+}
+
+}, []);
+
+const handleSend = async (overrideMessage = null) => { const msg = overrideMessage || message; if (!msg.trim()) return; setChat(prev => [...prev, { sender: 'user', text: msg }]); setMessage('');
+
+try {
+  const res = await fetch('http://localhost:8000/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg })
+  });
+  const data = await res.json();
+  setChat(prev => [...prev, { sender: 'bi', text: data.response || 'Aayat did not reply.' }]);
+} catch (error) {
+  console.error('Error communicating with Aayat:', error);
+  setChat(prev => [...prev, { sender: 'bi', text: 'Error: could not reach Aayat.' }]);
+}
+
+};
+
+const handleFileChange = async (e) => { const selectedFile = e.target.files[0]; if (!selectedFile) return; setFile(selectedFile); setChat(prev => [...prev, { sender: 'user', text: Uploaded file: ${selectedFile.name} }]);
+
+const fileType = selectedFile.type;
+if (fileType.startsWith('text/')) {
+  const text = await selectedFile.text();
+  setChat(prev => [...prev, { sender: 'bi', text: `File content: ${text.slice(0, 500)}...` }]);
+} else if (fileType === 'application/pdf') {
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const pdfjsLib = await import('pdfjs-dist/build/pdf');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.js`;
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(reader.result) }).promise;
+    let textContent = '';
+    for (let i = 1; i <= pdf.numPages && i <= 3; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map(item => item.str).join(' ');
+      textContent += strings + ' ';
+    }
+    setChat(prev => [...prev, { sender: 'bi', text: `PDF content (preview): ${textContent.slice(0, 500)}...` }]);
+  };
+  reader.readAsArrayBuffer(selectedFile);
+} else if (fileType.startsWith('image/')) {
+  const imageUrl = URL.createObjectURL(selectedFile);
+  setChat(prev => [...prev, { sender: 'bi', text: 'Previewing uploaded image:', image: imageUrl }]);
+} else {
+  setChat(prev => [...prev, { sender: 'bi', text: 'Unsupported file type. Please upload a text, PDF, or image file.' }]);
+}
+
+};
+
+return ( <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white py-6 px-4"> <div className="text-center mb-6"> <h1 className="text-4xl font-extrabold text-blue-700">Bharat Intelligence</h1> <p className="text-sm text-gray-600">Created by Hamza — Powered by Aayat</p> </div>
+
+<div className="max-w-xl mx-auto">
+    <Card className="h-96 overflow-y-auto p-4 mb-4 bg-white shadow-md rounded-2xl">
+      <CardContent>
+        {chat.map((msg, idx) => (
+          <div key={idx} className={`mb-2 text-${msg.sender === 'user' ? 'right' : 'left'}`}> 
+            <span className={`inline-block px-3 py-2 rounded-xl ${msg.sender === 'user' ? 'bg-blue-200' : 'bg-green-200'}`}>
+              {msg.text}
+            </span>
+            {msg.image && (
+              <div className="mt-2">
+                <img src={msg.image} alt="Uploaded" className="max-w-xs rounded-md border" />
+              </div>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+    <div className="flex gap-2 mb-2">
+      <Input 
+        value={message} 
+        onChange={(e) => setMessage(e.target.value)} 
+        placeholder="Talk to Bi..." 
+      />
+      <Button onClick={() => handleSend()}><Send className="w-4 h-4" /></Button>
+      <Button variant="outline"><Mic className="w-4 h-4" /></Button>
+    </div>
+    <div className="flex items-center gap-2">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <UploadCloud className="w-5 h-5" /> Upload File
+        <input type="file" className="hidden" onChange={handleFileChange} />
+      </label>
+      {file && <span className="text-sm text-gray-600">Selected: {file.name}</span>}
+    </div>
+  </div>
+</div>
+
+); };
+
+export default Bi;
+
+# Hamza
